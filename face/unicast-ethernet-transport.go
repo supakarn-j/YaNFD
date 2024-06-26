@@ -5,6 +5,7 @@
  * This file is licensed under the terms of the MIT License, as found in LICENSE.md.
  */
 
+//------------------------------------------- Not working
 package face
 
 import (
@@ -21,8 +22,8 @@ import (
 	"github.com/named-data/YaNFD/ndn/tlv"
 )
 
-// MulticastEthernetTransport is a multicast Ethernet transport.
-type MulticastEthernetTransport struct {
+// UnicastEthernetTransport is a Unicast Ethernet transport.
+type UnicastEthernetTransport struct {
 	pcap           impl.PcapHandle
 	shouldQuit     chan bool
 	remoteAddr     net.HardwareAddr
@@ -32,16 +33,16 @@ type MulticastEthernetTransport struct {
 	transportBase
 }
 
-// MakeMulticastEthernetTransport creates a new multicast Ethernet transport.
-func MakeMulticastEthernetTransport(remoteURI *ndn.URI, localURI *ndn.URI) (*MulticastEthernetTransport, error) {
+// MakeUnicastEthernetTransport creates a new Unicast Ethernet transport.
+func MakeUnicastEthernetTransport(remoteURI *ndn.URI, localURI *ndn.URI) (*UnicastEthernetTransport, error) {
 	// Validate URIs
 	if !remoteURI.IsCanonical() || remoteURI.Scheme() != "ether" || !localURI.IsCanonical() ||
 		localURI.Scheme() != "dev" {
 		return nil, core.ErrNotCanonical
 	}
 
-	t := new(MulticastEthernetTransport)
-	t.makeTransportBase(remoteURI, localURI, PersistencyPermanent, ndn.NonLocal, ndn.MultiAccess, tlv.MaxNDNPacketSize)
+	t := new(UnicastEthernetTransport)
+	t.makeTransportBase(remoteURI, localURI, PersistencyPermanent, ndn.NonLocal, ndn.PointToPoint, tlv.MaxNDNPacketSize)
 	t.shouldQuit = make(chan bool, 1)
 	var err error
 	t.remoteAddr, err = net.ParseMAC(remoteURI.Path())
@@ -60,7 +61,7 @@ func MakeMulticastEthernetTransport(remoteURI *ndn.URI, localURI *ndn.URI) (*Mul
 	return t, nil
 }
 
-func (t *MulticastEthernetTransport) activateHandle() error {
+func (t *UnicastEthernetTransport) activateHandle() error {
 	// Get interface
 	iface, err := net.InterfaceByName(t.localURI.Path())
 	if err != nil {
@@ -75,8 +76,10 @@ func (t *MulticastEthernetTransport) activateHandle() error {
 	t.pcap, err = impl.OpenPcap(t.localURI.Path(),
 		fmt.Sprintf("ether proto %d and ether dst %s and not ether src %s and not vlan",
 			ndnEtherType, t.remoteAddr, t.localAddr),
+		// fmt.Sprintf("ether proto %d and ether dst %s and not vlan",
+		// 	ndnEtherType, t.localAddr),
 	)
-	// core.LogDebug(t,fmt.Sprintf("ether proto %d and ether dst %s and not ether src %s and not vlan",ndnEtherType, t.remoteAddr, t.localAddr))
+	core.LogDebug(t, fmt.Sprintf("ether proto %d and ether dst %s and not vlan", ndnEtherType, t.localAddr))
 	if err != nil {
 		return err
 	}
@@ -87,13 +90,13 @@ func (t *MulticastEthernetTransport) activateHandle() error {
 	return nil
 }
 
-func (t *MulticastEthernetTransport) String() string {
-	return "MulticastEthernetTransport, FaceID=" + strconv.FormatUint(t.faceID, 10) +
+func (t *UnicastEthernetTransport) String() string {
+	return "UnicastEthernetTransport, FaceID=" + strconv.FormatUint(t.faceID, 10) +
 		", RemoteURI=" + t.remoteURI.String() + ", LocalURI=" + t.localURI.String()
 }
 
 // SetPersistency changes the persistency of the face.
-func (t *MulticastEthernetTransport) SetPersistency(persistency Persistency) bool {
+func (t *UnicastEthernetTransport) SetPersistency(persistency Persistency) bool {
 	if persistency == t.persistency {
 		return true
 	}
@@ -107,12 +110,12 @@ func (t *MulticastEthernetTransport) SetPersistency(persistency Persistency) boo
 }
 
 // GetSendQueueSize returns the current size of the send queue.
-func (t *MulticastEthernetTransport) GetSendQueueSize() uint64 {
+func (t *UnicastEthernetTransport) GetSendQueueSize() uint64 {
 	// TODO: Unsupported for now
 	return 0
 }
 
-func (t *MulticastEthernetTransport) sendFrame(frame []byte) {
+func (t *UnicastEthernetTransport) sendFrame(frame []byte) {
 	if len(frame) > t.MTU() {
 		core.LogWarn(t, "Attempted to send frame larger than MTU - DROP")
 		return
@@ -138,7 +141,7 @@ func (t *MulticastEthernetTransport) sendFrame(frame []byte) {
 	t.nOutBytes += uint64(len(frame))
 }
 
-func (t *MulticastEthernetTransport) runReceive() {
+func (t *UnicastEthernetTransport) runReceive() {
 	if lockThreadsToCores {
 		runtime.LockOSThread()
 	}
@@ -169,7 +172,7 @@ func (t *MulticastEthernetTransport) runReceive() {
 	}
 }
 
-func (t *MulticastEthernetTransport) changeState(new ndn.State) {
+func (t *UnicastEthernetTransport) changeState(new ndn.State) {
 	if t.state == new {
 		return
 	}
@@ -178,7 +181,7 @@ func (t *MulticastEthernetTransport) changeState(new ndn.State) {
 	t.state = new
 
 	if t.state != ndn.Up {
-		core.LogInfo(t, "Closing multicast Ethernet transport")
+		core.LogInfo(t, "Closing Unicast Ethernet transport")
 		t.shouldQuit <- true
 		// Explicit close seems to be broken for now: https://github.com/google/gopacket/issues/862
 		/*if t.pcap != nil {

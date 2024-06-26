@@ -16,7 +16,7 @@ import (
 )
 
 // MaxNDNPacketSize is the maximum allowed NDN packet size
-//const MaxNDNPacketSize = 8800
+// const MaxNDNPacketSize = 8800
 const MaxNDNPacketSize = 33554432
 
 // Block contains an encoded block.

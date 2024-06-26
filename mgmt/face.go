@@ -324,6 +324,34 @@ func (f *FaceModule) create(interest *spec.Interest, pitToken []byte, inFace uin
 
 		// Start new face
 		go linkService.Run(nil)
+	} else if URI.Scheme() == "ether" {
+		localURI := oldndn.DecodeURIString(*params.LocalUri)
+		// Create new Ethernet face
+		transport, err := face.MakeUnicastEthernetTransport(URI, localURI)
+		if err != nil {
+			core.LogWarn(f, "Unable to create unicast Ethernet face with URI ", URI, ":", err.Error())
+			response = makeControlResponse(406, "Transport error", nil)
+			f.manager.sendResponse(response, interest, pitToken, inFace)
+			return
+		}
+		
+		if params.Mtu != nil {
+			mtu := int(*params.Mtu)
+			if *params.Mtu > tlv.MaxNDNPacketSize {
+				mtu = tlv.MaxNDNPacketSize
+			}
+			transport.SetMTU(mtu)
+		}
+
+		// NDNLP link service parameters
+		options := face.MakeNDNLPLinkServiceOptions()
+
+		linkService = face.MakeNDNLPLinkService(transport, options)
+		face.FaceTable.Add(linkService)
+
+		// Start new face
+		go linkService.Run(nil)
+
 	} else {
 		// Unsupported scheme
 		core.LogWarn(f, "Cannot create face with URI ", URI, ": Unsupported scheme ", URI)
