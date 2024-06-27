@@ -19,6 +19,8 @@ type EthernetListener struct {
     iface           *net.Interface
     localURI        *ndn.URI
     HasQuit         chan bool
+    restartReceive  chan interface{} 
+    packetSource    *gopacket.PacketSource
 }
 
 // MakeEthernetListener constructs an EthernetListener.
@@ -43,6 +45,21 @@ func MakeEthernetListener(localURI *ndn.URI) (*EthernetListener, error) {
     return l, nil
 }
 
+func (l *EthernetListener) createListener() (*gopacket.PacketSource, error) {
+    var err error
+    l.restartReceive = make(chan interface{}, 1)
+    l.conn, err = impl.OpenPcap(l.localURI.Path(),
+        fmt.Sprintf("ether proto %d and ether dst %s", ndnEtherType, l.iface.HardwareAddr),
+    )
+    if err != nil {
+        core.LogError(l, "Unable to open pcap handle: ", err)
+        l.HasQuit <- true
+        return nil, err
+    }
+
+    return gopacket.NewPacketSource(l.conn, l.conn.LinkType()), nil
+}
+
 func (l *EthernetListener) String() string {
     return "EthernetListener, " + l.localURI.String()
 }
@@ -52,47 +69,50 @@ func (l *EthernetListener) Run() {
     // Logic to listen for Ethernet traffic
     // This could involve setting up a PCAP handle similar to UnicastEthernetTransport.activateHandle()
     // and continuously reading packets from it.
+
+    // Create listener
     var err error
-    core.LogDebug(l, "Opening pcap handle")
-    core.LogDebug(l, "EtherType: ", ndnEtherType)
-    core.LogDebug(l, "iface: ", l.iface.HardwareAddr)
-    l.conn, err = impl.OpenPcap(l.localURI.Path(),
-        fmt.Sprintf("ether proto %d and ether dst %s", ndnEtherType, l.iface.HardwareAddr),
-    )
+    l.packetSource, err = l.createListener()
     if err != nil {
-        core.LogFatal(l, "Unable to open pcap handle: ", err)
-        l.HasQuit <- true
+        core.LogError(l, "Unable to create listener: ", err)
         return
     }
-    core.LogDebug(l, "Opened pcap handle at ", l.localURI.Path(), " for ", l.iface.HardwareAddr)
-
     // Run accept loop
-    packetSource := gopacket.NewPacketSource(l.conn, l.conn.LinkType())
-    for packet := range packetSource.Packets() {
-        core.LogDebug(l, "Received packet")
-        remoteAddrEndpoint := packet.LinkLayer().LinkFlow().Dst()
-        remoteAddr, err := net.ParseMAC(remoteAddrEndpoint.String())
-        if err != nil {
-            core.LogError(l, "Unable to parse MAC address: ", err)
-            continue
-        }
-        var remoteURI *ndn.URI
-        remoteURI = ndn.MakeEthernetFaceURI(remoteAddr)
-        remoteURI.Canonize()
-        if !remoteURI.IsCanonical() {
-            core.LogWarn(l, "Unable to create face from ", remoteAddr, ": could not create canonical URI")
-            continue
-        }
+    // defer func() {
+    //     l.conn.Close()
+    //     l.HasQuit <- true
+    // }()
 
-        core.LogTrace(l, "Received packet from ", remoteURI)
-
-        newTransport, err := MakeUnicastEthernetTransport(remoteURI, l.localURI)
-        if err != nil {
-            core.LogError(l, "Unable to create transport: ", err)
+    for {
+        select{
+        case packet := <-l.packetSource.Packets():
+            remoteAddrEndpoint := packet.LinkLayer().LinkFlow().Dst()
+            remoteAddr, err := net.ParseMAC(remoteAddrEndpoint.String())
+            if err != nil {
+                core.LogError(l, "Unable to parse MAC address: ", err)
+                continue
+            }
+            var remoteURI *ndn.URI
+            remoteURI = ndn.MakeEthernetFaceURI(remoteAddr)
+            remoteURI.Canonize()
+            if !remoteURI.IsCanonical() {
+                core.LogWarn(l, "Unable to create face from ", remoteAddr, ": could not create canonical URI")
+                continue
+            }
+    
+            core.LogTrace(l, "Received packet from ", remoteURI)
+    
+            newTransport, err := MakeUnicastEthernetTransport(remoteURI, l.localURI)
+            if err != nil {
+                core.LogError(l, "Unable to create transport: ", err)
+                continue
+            }
+            newLinkService := MakeNDNLPLinkService(newTransport, MakeNDNLPLinkServiceOptions())
+            FaceTable.Add(newLinkService)
+            core.LogDebug(l, "Called from ethernet-listener.go: ", newLinkService.String(), " added to FaceTable.")
+            go newLinkService.Run(packet.LinkLayer().LayerPayload())
+        case <-l.restartReceive:
             continue
         }
-        newLinkService := MakeNDNLPLinkService(newTransport, MakeNDNLPLinkServiceOptions())
-        FaceTable.Add(newLinkService)
-        go newLinkService.Run(packet.Data())
     }
 }

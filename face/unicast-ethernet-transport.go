@@ -74,12 +74,11 @@ func (t *UnicastEthernetTransport) activateHandle() error {
 	t.scope = ndn.NonLocal
 
 	t.pcap, err = impl.OpenPcap(t.localURI.Path(),
-		fmt.Sprintf("ether proto %d and ether dst %s and not ether src %s and not vlan",
-			ndnEtherType, t.remoteAddr, t.localAddr),
-		// fmt.Sprintf("ether proto %d and ether dst %s and not vlan",
-		// 	ndnEtherType, t.localAddr),
+		// fmt.Sprintf("ether proto %d and ether dst %s and not ether src %s and not vlan",
+		// 	ndnEtherType, t.remoteAddr, t.localAddr),
+		fmt.Sprintf("ether proto %d and ether dst %s and ether src %s and not vlan",
+			ndnEtherType, t.localAddr, t.remoteAddr),
 	)
-	core.LogDebug(t, fmt.Sprintf("ether proto %d and ether dst %s and not vlan", ndnEtherType, t.localAddr))
 	if err != nil {
 		return err
 	}
@@ -147,8 +146,10 @@ func (t *UnicastEthernetTransport) runReceive() {
 	}
 
 	for {
+		core.LogDebug(t, "Waiting for packet at ", t.localAddr)
 		select {
 		case packet := <-t.packetSource.Packets():
+			core.LogDebug(t, "Received packet at ", t.localAddr)
 			core.LogDebug(t, "Received ", len(packet.Data()), " bytes from ", packet.LinkLayer().LinkFlow().Src().String())
 
 			// Extract network layer (NDN)
@@ -161,7 +162,14 @@ func (t *UnicastEthernetTransport) runReceive() {
 			}
 
 			// Send up to link service
-			t.linkService.handleIncomingFrame(ndnLayer)
+			// t.linkService.handleIncomingFrame(ndnLayer)
+			
+			// FaceTable.Add(t.linkService)
+			// go t.linkService.Run(ndnLayer)
+			newLinkService := MakeNDNLPLinkService(t, MakeNDNLPLinkServiceOptions())
+			FaceTable.Add(newLinkService)
+			go newLinkService.Run(ndnLayer)
+
 		case <-t.shouldQuit:
 			core.LogDebug(t, "Receive thread is quitting")
 			return

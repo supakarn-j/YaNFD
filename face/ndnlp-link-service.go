@@ -240,7 +240,9 @@ func sendPacket(l *NDNLPLinkService, netPacket *ndn.PendingPacket) {
 
 	now := time.Now()
 
-	effectiveMtu := l.transport.MTU() - l.headerOverhead
+	// effectiveMtu := l.transport.MTU() - l.headerOverhead
+	effectiveMtu := 9000 - l.headerOverhead
+	// actualMtu := l.transport.MTU() - l.headerOverhead
 	if netPacket.PitToken != nil {
 		effectiveMtu -= pitTokenOverhead
 	}

@@ -167,15 +167,15 @@ func (y *YaNFD) Start() {
 				// TODO
 			}
 		}
-		// Create Ether listener
-		if iface.Name != "lo"{
-			etherListener, err := face.MakeEthernetListener(ndn.MakeDevFaceURI(iface.Name))
-			if err != nil {
-				core.LogError("Main", "Unable to create Ether listener on ", iface.Name, ": ", err)
-					continue
-			}
-			go etherListener.Run()
-		}
+		// // Create Ether listener
+		// if iface.Name != "lo"{
+		// 	etherListener, err := face.MakeEthernetListener(ndn.MakeDevFaceURI(iface.Name))
+		// 	if err != nil {
+		// 		core.LogError("Main", "Unable to create Ether listener on ", iface.Name, ": ", err)
+		// 			continue
+		// 	}
+		// 	go etherListener.Run()
+		// }
 
 		// Create UDP/TCP listener and multicast UDP interface for every address on interface
 		addrs, err := iface.Addrs()

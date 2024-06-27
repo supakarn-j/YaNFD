@@ -65,6 +65,7 @@ func (l *UDPListener) Run() {
 	// Run accept loop
 	recvBuf := make([]byte, tlv.MaxNDNPacketSize)
 	for !core.ShouldQuit {
+		core.LogDebug(l, "listener opened waiting for packets")
 		readSize, remoteAddr, err := l.conn.ReadFrom(recvBuf)
 		if err != nil {
 			core.LogWarn(l, "Unable to read from socket (", err, ") - DROP ")
@@ -102,6 +103,7 @@ func (l *UDPListener) Run() {
 
 		// Add face to table (which assigns FaceID) before passing current frame to link service
 		FaceTable.Add(newLinkService)
+		core.LogDebug(l, "Called from udp-listener.go: ", newLinkService.String(), " added to FaceTable.")
 		go newLinkService.Run(recvBuf[:readSize])
 	}
 

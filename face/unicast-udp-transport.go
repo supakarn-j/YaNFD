@@ -174,6 +174,7 @@ func (t *UnicastUDPTransport) runReceive() {
 
 	recvBuf := make([]byte, tlv.MaxNDNPacketSize)
 	for {
+		core.LogDebug(t, "receiver opened waiting for packets")
 		readSize, err := t.conn.Read(recvBuf)
 		if err != nil {
 			if err.Error() == "EOF" {
